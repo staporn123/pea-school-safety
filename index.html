@@ -34,7 +34,6 @@
       <span id="lastUpdated" class="muted">ยังไม่โหลดข้อมูล</span>
       <button id="refreshBtn" class="btn btn-light" type="button">รีเฟรช</button>
       <button id="reportBtn" class="btn btn-gold" type="button">ส่งออก PDF</button>
-      <button id="loginBtn" class="btn btn-primary" type="button">เข้าสู่โหมดทีม</button>
     </div>
   </header>
 
@@ -152,7 +151,6 @@
     <button data-mobile-view="summary" class="active">ภาพรวม</button>
     <button data-mobile-view="map">แผนที่</button>
     <button data-mobile-view="list">รายการ</button>
-    <button id="mobileTeamBtn">ทีมของฉัน</button>
   </nav>
 
   <div id="modalBackdrop" class="modal-backdrop hidden"></div>
@@ -168,19 +166,6 @@
       <button id="projectReportBtn" class="btn btn-light" type="button">PDF รายโรงเรียน</button>
       <button id="editProjectBtn" class="btn btn-primary" type="button">บันทึกผลดำเนินงาน</button>
     </div>
-  </section>
-
-  <section id="loginModal" class="modal modal-small hidden" role="dialog" aria-modal="true">
-    <div class="modal-header">
-      <div><span class="eyebrow">ทีมปฏิบัติงาน</span><h3>เข้าสู่ระบบ</h3></div>
-      <button class="icon-btn modal-close" type="button">×</button>
-    </div>
-    <form id="loginForm" class="modal-body form-stack">
-      <label class="field"><span>ผู้รับผิดชอบ</span><select id="loginOwner" required></select></label>
-      <label class="field"><span>PIN</span><input id="loginPin" type="password" inputmode="numeric" autocomplete="current-password" required></label>
-      <button class="btn btn-primary btn-block" type="submit">เข้าสู่โหมดทีม</button>
-      <p class="form-help">PIN ตรวจสอบที่ Google Apps Script และไม่ถูกเก็บใน GitHub</p>
-    </form>
   </section>
 
   <section id="editModal" class="modal hidden" role="dialog" aria-modal="true">
@@ -199,6 +184,17 @@
           </select>
         </label>
         <label class="field"><span>วันที่ดำเนินการ</span><input id="editWorkDate" type="date"></label>
+      </div>
+      <div class="form-grid two">
+        <label class="field">
+          <span>ผู้รับผิดชอบงาน</span>
+          <input id="editOwner" type="text" readonly>
+        </label>
+        <label class="field">
+          <span>รหัสพนักงานผู้บันทึก</span>
+          <input id="editEmployeeId" type="text" inputmode="numeric" pattern="[0-9]{4,10}" maxlength="10"
+                 autocomplete="off" placeholder="กรอกตัวเลข 4–10 หลัก" required>
+        </label>
       </div>
       <label class="field"><span>ชื่อผู้บันทึกผล</span><input id="editRecorder" type="text" maxlength="200" required></label>
       <label class="field"><span>หมายเหตุการดำเนินงาน</span><textarea id="editNote" rows="4" maxlength="2000"></textarea></label>
@@ -250,7 +246,7 @@
   <div id="toast" class="toast hidden"></div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="config.js?v=1.4.0"></script>
-  <script src="app.js?v=1.4.0"></script>
+  <script src="config.js?v=1.5.0"></script>
+  <script src="app.js?v=1.5.0"></script>
 </body>
 </html>
