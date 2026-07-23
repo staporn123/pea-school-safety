@@ -209,11 +209,25 @@
         <div id="editExistingPhotos"></div>
       </section>
 
-      <label class="upload-box">
-        <input id="imageInput" type="file" accept="image/*" capture="environment" multiple hidden>
-        <strong>ถ่ายภาพหรือเลือกภาพเพิ่ม</strong>
-        <span>เพิ่มได้หลายครั้งและไม่จำกัดจำนวนสะสมต่อหนึ่งงาน</span>
-      </label>
+      <div class="photo-source-grid">
+        <label class="photo-source-btn camera">
+          <input id="cameraInput" type="file" accept="image/*" capture="environment" multiple hidden>
+          <span class="photo-source-icon">📷</span>
+          <strong>ถ่ายภาพใหม่</strong>
+          <small>เปิดกล้องหลังของโทรศัพท์</small>
+        </label>
+
+        <label class="photo-source-btn gallery">
+          <input id="galleryInput" type="file" accept="image/*" multiple hidden>
+          <span class="photo-source-icon">🖼️</span>
+          <strong>เลือกจากเครื่อง</strong>
+          <small>เลือกรูปที่ถ่ายไว้แล้วได้หลายรูป</small>
+        </label>
+      </div>
+
+      <p class="photo-source-note">
+        สามารถถ่ายภาพใหม่หรือเลือกรูปจากแกลเลอรี แล้วเพิ่มซ้ำได้หลายครั้ง
+      </p>
 
       <div class="upload-selection-head">
         <strong id="selectedImageCount">0 รูปที่รออัปโหลด</strong>
@@ -246,7 +260,7 @@
   <div id="toast" class="toast hidden"></div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="config.js?v=1.8.0"></script>
-  <script src="app.js?v=1.8.0"></script>
+  <script src="config.js?v=1.9.0"></script>
+  <script src="app.js?v=1.9.0"></script>
 </body>
 </html>
