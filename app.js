@@ -72,7 +72,7 @@ function bindEvents() {
 async function loadData() {
   setLoading(true, 'กำลังอ่านข้อมูลจาก Google Sheet');
   try {
-    const data = await apiCall('bootstrap', {});
+    const data = await apiGetJsonp('bootstrap');
     if (!data.success) throw new Error(data.message || 'โหลดข้อมูลไม่สำเร็จ');
     state.projects = data.projects || [];
     state.owners = data.owners || [];
@@ -495,6 +495,62 @@ function setButtonLoading(button, active, text) {
     button.textContent = button.dataset.originalText || button.textContent;
     button.disabled = false;
   }
+}
+
+
+function apiGetJsonp(action, params = {}, timeout = 30000) {
+  return new Promise((resolve, reject) => {
+    const callbackName = '__peaJsonp_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+    const script = document.createElement('script');
+    let settled = false;
+
+    const cleanup = () => {
+      clearTimeout(timer);
+      try { delete window[callbackName]; } catch (_) { window[callbackName] = undefined; }
+      script.remove();
+    };
+
+    window[callbackName] = data => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (data && data.success === false) {
+        reject(new Error(data.message || 'API error'));
+        return;
+      }
+      resolve(data);
+    };
+
+    const query = new URLSearchParams({
+      action,
+      callback: callbackName,
+      _: String(Date.now()),
+      ...Object.fromEntries(
+        Object.entries(params).map(([key, value]) => [
+          key,
+          typeof value === 'string' ? value : JSON.stringify(value)
+        ])
+      )
+    });
+
+    script.src = APP_CONFIG.API_URL + '?' + query.toString();
+    script.async = true;
+    script.onerror = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(new Error('ไม่สามารถโหลดข้อมูลจาก Apps Script ได้ กรุณาตรวจสอบ URL และสิทธิ์ Deployment'));
+    };
+
+    document.head.appendChild(script);
+
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(new Error('Apps Script ไม่ตอบกลับภายในเวลาที่กำหนด กรุณาตรวจสอบ Deployment'));
+    }, timeout);
+  });
 }
 
 function apiCall(action, payload = {}, timeout = APP_CONFIG.API_TIMEOUT_MS) {
