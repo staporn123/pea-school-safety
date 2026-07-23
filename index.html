@@ -205,11 +205,24 @@
       <label class="field"><span>พิกัดหน้างาน</span>
         <div class="inline-field"><input id="editCoordinates" type="text" placeholder="เช่น 17.123456, 103.123456"><button id="getLocationBtn" class="btn btn-light" type="button">ใช้ตำแหน่งปัจจุบัน</button></div>
       </label>
+      <section class="existing-photo-section">
+        <div class="photo-section-title">
+          <strong>รูปภาพที่บันทึกไว้แล้ว</strong>
+          <span id="existingPhotoCount">0 รูป</span>
+        </div>
+        <div id="editExistingPhotos"></div>
+      </section>
+
       <label class="upload-box">
         <input id="imageInput" type="file" accept="image/*" capture="environment" multiple hidden>
-        <strong>ถ่ายภาพหรือเลือกภาพ</strong>
-        <span>สูงสุด 6 ภาพ ระบบจะย่อภาพก่อนอัปโหลด</span>
+        <strong>ถ่ายภาพหรือเลือกภาพเพิ่ม</strong>
+        <span>เพิ่มได้หลายครั้งและไม่จำกัดจำนวนสะสมต่อหนึ่งงาน</span>
       </label>
+
+      <div class="upload-selection-head">
+        <strong id="selectedImageCount">0 รูปที่รออัปโหลด</strong>
+        <span id="uploadProgressText">ระบบจะย่อและแบ่งอัปโหลดเป็นชุดอัตโนมัติ</span>
+      </div>
       <div id="imagePreview" class="image-preview"></div>
       <button id="saveProjectBtn" class="btn btn-primary btn-block" type="submit">บันทึกข้อมูล</button>
     </form>
@@ -237,7 +250,7 @@
   <div id="toast" class="toast hidden"></div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="config.js?v=1.3.0"></script>
-  <script src="app.js?v=1.3.0"></script>
+  <script src="config.js?v=1.4.0"></script>
+  <script src="app.js?v=1.4.0"></script>
 </body>
 </html>
