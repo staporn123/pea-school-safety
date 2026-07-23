@@ -191,3 +191,33 @@ a { color: inherit; text-decoration: none; }
   .view-toolbar { padding: 16px; }
   #map { height: 500px; }
 }
+
+
+/* V1.4 — Map actions and unlimited accumulated photos */
+.project-map-popup .leaflet-popup-content-wrapper { border-radius: 16px; }
+.project-map-popup .leaflet-popup-content { margin: 14px; width: auto !important; }
+.map-popup-card h4 { margin: 8px 0 3px; font-size: 1rem; line-height: 1.35; }
+.map-popup-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.map-photo-count { color: var(--muted); font-size: .8rem; white-space: nowrap; }
+.map-popup-wbs { margin: 0 0 8px !important; color: var(--muted); font-size: .78rem; word-break: break-all; }
+.map-popup-info { display: grid; gap: 3px; padding: 9px 10px; border-radius: 10px; background: var(--bg); font-size: .8rem; }
+.map-popup-info span { display: block; }
+.map-popup-photos { position: relative; display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-top: 9px; }
+.map-popup-photos img { width: 100%; aspect-ratio: 1.15; object-fit: cover; border-radius: 8px; background: #eee; }
+.map-popup-photos .more-photo { position: absolute; right: 5px; bottom: 5px; padding: 3px 7px; border-radius: 999px; color: #fff; background: rgba(30, 21, 38, .78); font-size: .72rem; font-weight: 800; }
+.map-popup-no-photo { margin-top: 9px; padding: 9px; border: 1px dashed #d7cfdf; border-radius: 10px; color: var(--muted); background: #faf8fc; text-align: center; font-size: .8rem; }
+.map-popup-actions { display: grid; grid-template-columns: 1fr 1.15fr; gap: 7px; margin-top: 10px; }
+.map-popup-actions .btn { padding: 9px 7px; font-size: .78rem; }
+
+.existing-photo-section { margin-top: 4px; padding: 14px; border: 1px solid var(--line); border-radius: 16px; background: #fbfbfd; }
+.photo-section-title, .upload-selection-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.photo-section-title span, .upload-selection-head span { color: var(--muted); font-size: .82rem; }
+.upload-selection-head { margin-top: 12px; }
+.upload-selection-head { align-items: flex-start; flex-direction: column; gap: 2px; }
+.preview-item > span { position: absolute; left: 6px; bottom: 6px; min-width: 24px; padding: 3px 6px; border-radius: 999px; color: #fff; background: rgba(0,0,0,.62); text-align: center; font-size: .72rem; font-weight: 700; }
+.upload-box { margin-top: 12px; }
+
+@media (max-width: 480px) {
+  .map-popup-actions { grid-template-columns: 1fr; }
+  .project-map-popup .leaflet-popup-content { margin: 11px; }
+}
