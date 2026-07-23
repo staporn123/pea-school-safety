@@ -6,12 +6,10 @@ const state = {
   owners: [],
   summary: null,
   selectedProject: null,
-  session: { token: sessionStorage.getItem('peaSessionToken') || '', owner: sessionStorage.getItem('peaSessionOwner') || '' },
   images: [],
   map: null,
   markersLayer: null,
   activeView: 'map',
-  pendingEditProjectId: '',
   uploadedInCurrentSave: 0
 };
 
@@ -28,20 +26,20 @@ function init() {
 
 function cacheElements() {
   [
-    'appLoading','lastUpdated','refreshBtn','reportBtn','loginBtn','progressText','progressBar','statTotal','statEquipment',
+    'appLoading','lastUpdated','refreshBtn','reportBtn','progressText','progressBar','statTotal','statEquipment',
     'statPending','statProcess','statPass','statFail','statCost','searchInput','ownerFilter','statusFilter','coordinateFilter',
     'clearFiltersBtn','ownerSummaryList','resultCount','mapView','listView','projectList','emptyState','modalBackdrop','detailModal',
-    'detailTitle','detailBody','detailMapBtn','projectReportBtn','editProjectBtn','loginModal','loginForm','loginOwner','loginPin',
-    'editModal','editForm','editTitle','editStatus','editWorkDate','editRecorder','editNote','editCoordinates','getLocationBtn',
-    'imageInput','imagePreview','selectedImageCount','editExistingPhotos','existingPhotoCount','uploadProgressText',
-    'saveProjectBtn','reportModal','reportForm','reportType','reportOwnerField','reportOwner','reportCount','toast'
+    'detailTitle','detailBody','detailMapBtn','projectReportBtn','editProjectBtn',
+    'editModal','editForm','editTitle','editStatus','editWorkDate','editOwner','editEmployeeId','editRecorder','editNote',
+    'editCoordinates','getLocationBtn','imageInput','imagePreview','selectedImageCount','editExistingPhotos',
+    'existingPhotoCount','uploadProgressText','saveProjectBtn','reportModal','reportForm','reportType',
+    'reportOwnerField','reportOwner','reportCount','toast'
   ].forEach(id => { el[id] = document.getElementById(id); });
 }
 
 function bindEvents() {
   el.refreshBtn.addEventListener('click', loadData);
   el.reportBtn.addEventListener('click', openReportModal);
-  el.loginBtn.addEventListener('click', handleLoginButton);
   el.clearFiltersBtn.addEventListener('click', clearFilters);
   el.searchInput.addEventListener('input', debounce(applyFilters, 220));
   el.ownerFilter.addEventListener('change', applyFilters);
@@ -54,7 +52,6 @@ function bindEvents() {
   document.querySelectorAll('.segmented button').forEach(button => button.addEventListener('click', () => setView(button.dataset.view)));
   document.querySelectorAll('.modal-close').forEach(button => button.addEventListener('click', closeModals));
   el.modalBackdrop.addEventListener('click', closeModals);
-  el.loginForm.addEventListener('submit', submitLogin);
   el.editForm.addEventListener('submit', submitProject);
   el.getLocationBtn.addEventListener('click', getCurrentLocation);
   el.imageInput.addEventListener('change', handleImages);
@@ -63,7 +60,6 @@ function bindEvents() {
   el.reportType.addEventListener('change', updateReportOptions);
   el.reportOwner.addEventListener('change', updateReportCount);
   el.reportForm.addEventListener('submit', submitReport);
-  document.getElementById('mobileTeamBtn').addEventListener('click', handleLoginButton);
   document.querySelectorAll('[data-mobile-view]').forEach(button => button.addEventListener('click', () => {
     const view = button.dataset.mobileView;
     if (view === 'summary') window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -84,7 +80,6 @@ async function loadData() {
     renderSummary();
     applyFilters();
     el.lastUpdated.textContent = 'อัปเดต ' + formatDateTime(data.lastUpdated);
-    updateLoginButton();
   } catch (error) {
     showToast(error.message, true);
   } finally {
@@ -95,7 +90,6 @@ async function loadData() {
 function populateOwners() {
   const options = ['<option value="">ทั้งหมด</option>'].concat(state.owners.map(owner => `<option value="${escapeAttr(owner)}">${escapeHtml(owner)}</option>`));
   el.ownerFilter.innerHTML = options.join('');
-  el.loginOwner.innerHTML = state.owners.map(owner => `<option value="${escapeAttr(owner)}">${escapeHtml(owner)}</option>`).join('');
   el.reportOwner.innerHTML = state.owners.map(owner => `<option value="${escapeAttr(owner)}">${escapeHtml(owner)}</option>`).join('');
 }
 
@@ -306,6 +300,7 @@ function openProject(id) {
       ${detailItem('ค่าใช้จ่ายรวม', `${number(project.totalCost,2)} บาท`)}
       ${detailItem('วันที่ดำเนินการ', project.workDate || '-')}
       ${detailItem('ผู้บันทึกผล', project.recorder || '-')}
+      ${detailItem('รหัสพนักงานผู้บันทึก', project.employeeId || '-')}
       ${detailItem('อัปเดตล่าสุด', project.updatedAt ? formatDateTime(project.updatedAt) : '-')}
       ${detailItem('พิกัด', project.latitude && project.longitude ? `${project.latitude}, ${project.longitude}` : '-')}
       ${detailItem('จำนวนรูปภาพ', `${number(project.photoCount)} ภาพ`)}
@@ -335,96 +330,12 @@ function beginEditProject(projectId) {
   if (!project) return;
 
   state.selectedProject = project;
-
-  if (state.session.token && state.session.owner === project.owner) {
-    openEditModal();
-    return;
-  }
-
-  state.pendingEditProjectId = project.id;
-
-  if (state.session.token && state.session.owner !== project.owner) {
-    state.session = { token: '', owner: '' };
-    sessionStorage.removeItem('peaSessionToken');
-    sessionStorage.removeItem('peaSessionOwner');
-    updateLoginButton();
-  }
-
-  closeModals();
-  if (Array.from(el.loginOwner.options).some(option => option.value === project.owner)) {
-    el.loginOwner.value = project.owner;
-  }
-  showToast(`กรุณาเข้าสู่โหมดทีม ${project.owner} เพื่อบันทึกงานนี้`);
-  openModal(el.loginModal);
-}
-
-function handleLoginButton() {
-  if (state.session.token) {
-    if (confirm(`ออกจากโหมดทีม ${state.session.owner} หรือไม่`)) logout();
-    return;
-  }
-  openModal(el.loginModal);
-}
-
-async function submitLogin(event) {
-  event.preventDefault();
-  const submit = event.submitter;
-  setButtonLoading(submit, true, 'กำลังตรวจสอบ...');
-  try {
-    const data = await apiCall('authenticate', { owner: el.loginOwner.value, pin: el.loginPin.value });
-    if (!data.success) throw new Error(data.message || 'เข้าสู่ระบบไม่สำเร็จ');
-    state.session = { token: data.token, owner: data.owner };
-    sessionStorage.setItem('peaSessionToken', data.token);
-    sessionStorage.setItem('peaSessionOwner', data.owner);
-    el.loginPin.value = '';
-    const pendingProjectId = state.pendingEditProjectId;
-    state.pendingEditProjectId = '';
-    closeModals();
-    updateLoginButton();
-    showToast(`เข้าสู่โหมดทีม ${data.owner} แล้ว`);
-    if (pendingProjectId) {
-      const pendingProject = state.projects.find(item => item.id === pendingProjectId);
-      if (pendingProject && pendingProject.owner === data.owner) {
-        state.selectedProject = pendingProject;
-        setTimeout(openEditModal, 0);
-      }
-    }
-  } catch (error) {
-    showToast(error.message, true);
-  } finally {
-    setButtonLoading(submit, false);
-  }
-}
-
-async function logout() {
-  try { await apiCall('logout', { token: state.session.token }); } catch (_) {}
-  state.session = { token: '', owner: '' };
-  sessionStorage.removeItem('peaSessionToken');
-  sessionStorage.removeItem('peaSessionOwner');
-  updateLoginButton();
-  showToast('ออกจากโหมดทีมแล้ว');
-}
-
-function updateLoginButton() {
-  if (state.session.token) {
-    el.loginBtn.textContent = `ทีม: ${state.session.owner}`;
-    el.loginBtn.classList.add('btn-gold');
-    el.loginBtn.classList.remove('btn-primary');
-  } else {
-    el.loginBtn.textContent = 'เข้าสู่โหมดทีม';
-    el.loginBtn.classList.add('btn-primary');
-    el.loginBtn.classList.remove('btn-gold');
-  }
+  openEditModal();
 }
 
 function openEditModal() {
   const p = state.selectedProject;
   if (!p) return;
-
-  if (!state.session.token || state.session.owner !== p.owner) {
-    beginEditProject(p.id);
-    return;
-  }
 
   closeModals();
   state.images = [];
@@ -432,7 +343,9 @@ function openEditModal() {
   el.editTitle.textContent = p.schoolName;
   el.editStatus.value = p.status;
   el.editWorkDate.value = p.workDate || new Date().toISOString().slice(0, 10);
-  el.editRecorder.value = p.recorder || '';
+  el.editOwner.value = p.owner || '';
+  el.editEmployeeId.value = p.employeeId || localStorage.getItem('peaLastEmployeeId') || '';
+  el.editRecorder.value = p.recorder || localStorage.getItem('peaLastRecorder') || '';
   el.editNote.value = p.note || '';
   el.editCoordinates.value = p.fieldCoordinates || (p.latitude && p.longitude ? `${p.latitude}, ${p.longitude}` : '');
   el.imageInput.value = '';
@@ -492,6 +405,7 @@ async function submitProject(event) {
   if (!p) return;
 
   const status = el.editStatus.value;
+  const employeeId = el.editEmployeeId.value.replace(/\D/g, '').trim();
   const recorder = el.editRecorder.value.trim();
   const note = el.editNote.value.trim();
   const workDate = el.editWorkDate.value;
@@ -499,6 +413,9 @@ async function submitProject(event) {
   const existingPhotoCount = Number(p.photoCount || 0);
   const newPhotos = state.images.slice();
 
+  if (!/^\d{4,10}$/.test(employeeId)) {
+    return showToast('กรุณากรอกรหัสพนักงานเป็นตัวเลข 4–10 หลัก', true);
+  }
   if (!recorder) return showToast('กรุณากรอกชื่อผู้บันทึกผล', true);
   if (status === 'PASS' && !workDate) return showToast('กรุณาระบุวันที่ดำเนินการ', true);
   if (status === 'PASS' && existingPhotoCount + newPhotos.length < 1) {
@@ -522,8 +439,9 @@ async function submitProject(event) {
       el.uploadProgressText.textContent = `กำลังส่งรูปชุดที่ ${number(index + 1)} จาก ${number(batches.length)} กรุณาอย่าปิดหน้านี้`;
 
       const uploadResult = await apiCall('uploadProjectPhotos', {
-        token: state.session.token,
         projectId: p.id,
+        employeeId,
+        recorder,
         images: batch
       }, 180000);
 
@@ -533,10 +451,10 @@ async function submitProject(event) {
 
     el.saveProjectBtn.textContent = 'กำลังบันทึกสถานะและรายละเอียด...';
     const data = await apiCall('saveProject', {
-      token: state.session.token,
       projectId: p.id,
       status,
       workDate,
+      employeeId,
       recorder,
       note,
       fieldCoordinates,
@@ -545,6 +463,8 @@ async function submitProject(event) {
 
     if (!data.success) throw new Error(data.message || 'บันทึกไม่สำเร็จ');
 
+    localStorage.setItem('peaLastEmployeeId', employeeId);
+    localStorage.setItem('peaLastRecorder', recorder);
     state.images = [];
     closeModals();
     showToast(`บันทึกสำเร็จ${state.uploadedInCurrentSave ? ` และเพิ่มรูป ${number(state.uploadedInCurrentSave)} รูป` : ''}`);
@@ -559,7 +479,6 @@ async function submitProject(event) {
       }
     }
   } catch (error) {
-    if (/เซสชัน/.test(error.message)) await logout();
     const partialMessage = state.uploadedInCurrentSave > 0
       ? `อัปโหลดสำเร็จแล้ว ${number(state.uploadedInCurrentSave)} รูป แต่ขั้นตอนถัดไปไม่สำเร็จ: ${error.message}`
       : error.message;
