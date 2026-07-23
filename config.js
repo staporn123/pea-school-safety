@@ -1,6 +1,6 @@
 window.APP_CONFIG = Object.freeze({
   APP_NAME: 'PEA School Water Safety 2569',
-  API_URL: 'https://script.google.com/macros/s/AKfycbzCa3_lpE3UyGdTUgfxv1mZb22RKyouRORigDKpqhB78d9fekai9LS0uZIansIWLvBjPw/exec',
+  API_URL: 'https://script.google.com/macros/s/AKfycbzPccpV4D8TtwnpFMmhYSkdTwT1Kjz8pBwqruExVzdN0xwXAdlJ2GkxH3PdIrdrwWkGSw/exec',
   API_TIMEOUT_MS: 90000,
   MAP_DEFAULT_CENTER: [17.65, 103.95],
   MAP_DEFAULT_ZOOM: 9,
