@@ -45,7 +45,7 @@ function cacheElements() {
     'clearFiltersBtn','ownerSummaryList','resultCount','mapView','listView','projectList','emptyState','modalBackdrop','detailModal',
     'detailTitle','detailBody','detailMapBtn','projectReportBtn','editProjectBtn',
     'editModal','editForm','editTitle','editStatus','editWorkDate','editOwner','editEmployeeId','editRecorder','editNote',
-    'editCoordinates','getLocationBtn','imageInput','imagePreview','selectedImageCount','editExistingPhotos',
+    'editCoordinates','getLocationBtn','cameraInput','galleryInput','imagePreview','selectedImageCount','editExistingPhotos',
     'existingPhotoCount','uploadProgressText','saveProjectBtn','reportModal','reportForm','reportType',
     'reportOwnerField','reportOwner','reportCount','toast'
   ].forEach(id => { el[id] = document.getElementById(id); });
@@ -68,7 +68,8 @@ function bindEvents() {
   el.modalBackdrop.addEventListener('click', closeModals);
   el.editForm.addEventListener('submit', submitProject);
   el.getLocationBtn.addEventListener('click', getCurrentLocation);
-  el.imageInput.addEventListener('change', handleImages);
+  el.cameraInput.addEventListener('change', handleImages);
+  el.galleryInput.addEventListener('change', handleImages);
   el.projectReportBtn.addEventListener('click', () => generateProjectReport(state.selectedProject));
   el.editProjectBtn.addEventListener('click', () => beginEditProject(state.selectedProject && state.selectedProject.id));
   el.reportType.addEventListener('change', updateReportOptions);
@@ -454,7 +455,8 @@ function openEditModal() {
   el.editRecorder.value = p.recorder || localStorage.getItem('peaLastRecorder') || '';
   el.editNote.value = p.note || '';
   el.editCoordinates.value = p.fieldCoordinates || (p.latitude && p.longitude ? `${p.latitude}, ${p.longitude}` : '');
-  el.imageInput.value = '';
+  el.cameraInput.value = '';
+  el.galleryInput.value = '';
   el.existingPhotoCount.textContent = `${number(p.photoCount)} รูป`;
   el.editExistingPhotos.innerHTML = renderPhotoGallery(p.photoUrls || []);
   el.uploadProgressText.textContent = 'สามารถถ่ายหรือเลือกเพิ่มได้หลายครั้ง ระบบจะอัปโหลดเป็นชุดอัตโนมัติ';
@@ -480,7 +482,10 @@ async function handleImages(event) {
       el.appLoading.querySelector('strong').textContent = `กำลังเตรียมรูป ${number(completed)} จาก ${number(files.length)}`;
     }
     renderImagePreview();
-    showToast(`เพิ่มรูปสำหรับอัปโหลดแล้ว ${number(files.length)} รูป`);
+    const sourceLabel = event.target.id === 'cameraInput'
+      ? 'จากกล้อง'
+      : 'จากเครื่อง';
+    showToast(`เพิ่มรูป${sourceLabel}แล้ว ${number(files.length)} รูป`);
   } catch (error) {
     showToast('เตรียมรูปไม่สำเร็จ: ' + error.message, true);
   } finally {
