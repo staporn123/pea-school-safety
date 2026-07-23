@@ -384,7 +384,12 @@ async function handleImages(event) {
 }
 
 function renderImagePreview() {
-  el.selectedImageCount.textContent = `${number(state.images.length)} รูปที่รออัปโหลด`;
+  const estimatedBytes = state.images.reduce((sum, image) => {
+    const base64 = String(image.dataUrl || '').split(',')[1] || '';
+    return sum + Math.round(base64.length * 0.75);
+  }, 0);
+  el.selectedImageCount.textContent =
+    `${number(state.images.length)} รูปที่รออัปโหลด • ประมาณ ${formatFileSize(estimatedBytes)}`;
   el.imagePreview.innerHTML = state.images.map((image, index) => `
     <div class="preview-item">
       <img src="${image.dataUrl}" alt="ภาพที่ ${index + 1}">
@@ -423,20 +428,26 @@ async function submitProject(event) {
   }
   if (status === 'FAIL' && !note) return showToast('งานติดปัญหาต้องระบุหมายเหตุ', true);
 
-  const batchSize = Math.max(1, Number(APP_CONFIG.UPLOAD_BATCH_SIZE || 3));
+  const batchSize = Math.max(1, Number(APP_CONFIG.UPLOAD_BATCH_SIZE || 5));
   const batches = [];
   for (let index = 0; index < newPhotos.length; index += batchSize) {
     batches.push(newPhotos.slice(index, index + batchSize));
   }
 
+  // ให้ชุดสุดท้ายถูกส่งพร้อม saveProject เพื่อลดจำนวนรอบ Apps Script
+  const uploadOnlyBatches = batches.length > 1 ? batches.slice(0, -1) : [];
+  const finalImages = batches.length ? batches[batches.length - 1] : [];
+
   setButtonLoading(el.saveProjectBtn, true, 'กำลังบันทึก...');
   state.uploadedInCurrentSave = 0;
 
   try {
-    for (let index = 0; index < batches.length; index += 1) {
-      const batch = batches[index];
-      el.saveProjectBtn.textContent = `กำลังอัปโหลดรูป ${number(state.uploadedInCurrentSave + 1)}–${number(state.uploadedInCurrentSave + batch.length)} จาก ${number(newPhotos.length)}`;
-      el.uploadProgressText.textContent = `กำลังส่งรูปชุดที่ ${number(index + 1)} จาก ${number(batches.length)} กรุณาอย่าปิดหน้านี้`;
+    for (let index = 0; index < uploadOnlyBatches.length; index += 1) {
+      const batch = uploadOnlyBatches[index];
+      el.saveProjectBtn.textContent =
+        `กำลังอัปโหลดรูป ${number(state.uploadedInCurrentSave + 1)}–${number(state.uploadedInCurrentSave + batch.length)} จาก ${number(newPhotos.length)}`;
+      el.uploadProgressText.textContent =
+        `กำลังส่งรูปชุดที่ ${number(index + 1)} จาก ${number(batches.length)} กรุณาอย่าปิดหน้านี้`;
 
       const uploadResult = await apiCall('uploadProjectPhotos', {
         projectId: p.id,
@@ -449,7 +460,16 @@ async function submitProject(event) {
       state.uploadedInCurrentSave += Number(uploadResult.uploadedCount || batch.length);
     }
 
-    el.saveProjectBtn.textContent = 'กำลังบันทึกสถานะและรายละเอียด...';
+    const finalStart = state.uploadedInCurrentSave + 1;
+    const finalEnd = state.uploadedInCurrentSave + finalImages.length;
+    el.saveProjectBtn.textContent = finalImages.length
+      ? `กำลังบันทึกข้อมูลและรูป ${number(finalStart)}–${number(finalEnd)} จาก ${number(newPhotos.length)}`
+      : 'กำลังบันทึกสถานะและรายละเอียด...';
+
+    el.uploadProgressText.textContent = finalImages.length
+      ? `กำลังบันทึกข้อมูลพร้อมรูปชุดสุดท้าย ${number(finalImages.length)} รูป`
+      : 'กำลังบันทึกข้อมูลการดำเนินงาน';
+
     const data = await apiCall('saveProject', {
       projectId: p.id,
       status,
@@ -458,16 +478,25 @@ async function submitProject(event) {
       recorder,
       note,
       fieldCoordinates,
-      images: []
-    }, 120000);
+      images: finalImages
+    }, 180000);
 
     if (!data.success) throw new Error(data.message || 'บันทึกไม่สำเร็จ');
+
+    state.uploadedInCurrentSave += Number(
+      (data.uploaded && data.uploaded.length) || finalImages.length || 0
+    );
 
     localStorage.setItem('peaLastEmployeeId', employeeId);
     localStorage.setItem('peaLastRecorder', recorder);
     state.images = [];
     closeModals();
-    showToast(`บันทึกสำเร็จ${state.uploadedInCurrentSave ? ` และเพิ่มรูป ${number(state.uploadedInCurrentSave)} รูป` : ''}`);
+    showToast(
+      `บันทึกสำเร็จ${state.uploadedInCurrentSave
+        ? ` และเพิ่มรูป ${number(state.uploadedInCurrentSave)} รูป`
+        : ''}`
+    );
+
     await loadData();
 
     const refreshed = state.projects.find(item => item.id === p.id);
@@ -475,7 +504,10 @@ async function submitProject(event) {
       state.selectedProject = refreshed;
       openProject(refreshed.id);
       if (refreshed.latitude && refreshed.longitude) {
-        state.map.setView([refreshed.latitude, refreshed.longitude], Math.max(state.map.getZoom(), 15));
+        state.map.setView(
+          [refreshed.latitude, refreshed.longitude],
+          Math.max(state.map.getZoom(), 15)
+        );
       }
     }
   } catch (error) {
@@ -484,11 +516,11 @@ async function submitProject(event) {
       : error.message;
     showToast(partialMessage, true);
   } finally {
-    el.uploadProgressText.textContent = 'สามารถเลือกเพิ่มได้หลายครั้ง รูปทั้งหมดจะสะสมในงานเดิม';
+    el.uploadProgressText.textContent =
+      'ระบบย่อรูปและรวมการบันทึกให้อัตโนมัติ เพื่อลดเวลารอ';
     setButtonLoading(el.saveProjectBtn, false);
   }
 }
-
 
 function getCurrentLocation() {
   if (!navigator.geolocation) return showToast('อุปกรณ์นี้ไม่รองรับการอ่านพิกัด', true);
@@ -704,30 +736,63 @@ function apiCall(action, payload = {}, timeout = APP_CONFIG.API_TIMEOUT_MS) {
   });
 }
 
-function compressImage(file) {
-  return new Promise((resolve, reject) => {
-    if (!file.type.startsWith('image/')) return reject(new Error('ไฟล์ไม่ใช่รูปภาพ'));
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error('อ่านไฟล์ไม่สำเร็จ'));
-    reader.onload = () => {
-      const image = new Image();
-      image.onerror = () => reject(new Error('เปิดรูปไม่สำเร็จ'));
-      image.onload = () => {
-        const maxSide = APP_CONFIG.MAX_IMAGE_SIDE;
-        const scale = Math.min(1, maxSide / Math.max(image.width, image.height));
-        const width = Math.max(1, Math.round(image.width * scale));
-        const height = Math.max(1, Math.round(image.height * scale));
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(image, 0, 0, width, height);
-        resolve(canvas.toDataURL('image/jpeg', APP_CONFIG.JPEG_QUALITY));
-      };
-      image.src = reader.result;
-    };
-    reader.readAsDataURL(file);
-  });
+async function compressImage(file) {
+  if (!file || !file.type.startsWith('image/')) {
+    throw new Error('ไฟล์ไม่ใช่รูปภาพ');
+  }
+
+  const maxSide = Math.max(640, Number(APP_CONFIG.MAX_IMAGE_SIDE || 1280));
+  const quality = Math.min(0.85, Math.max(0.45, Number(APP_CONFIG.JPEG_QUALITY || 0.64)));
+
+  let imageSource;
+  let width;
+  let height;
+  let cleanup = () => {};
+
+  if ('createImageBitmap' in window) {
+    imageSource = await createImageBitmap(file);
+    width = imageSource.width;
+    height = imageSource.height;
+    cleanup = () => imageSource.close();
+  } else {
+    const objectUrl = URL.createObjectURL(file);
+    const image = await new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error('เปิดรูปไม่สำเร็จ'));
+      img.src = objectUrl;
+    });
+    imageSource = image;
+    width = image.naturalWidth || image.width;
+    height = image.naturalHeight || image.height;
+    cleanup = () => URL.revokeObjectURL(objectUrl);
+  }
+
+  try {
+    const scale = Math.min(1, maxSide / Math.max(width, height));
+    const targetWidth = Math.max(1, Math.round(width * scale));
+    const targetHeight = Math.max(1, Math.round(height * scale));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+
+    const context = canvas.getContext('2d', { alpha: false });
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, targetWidth, targetHeight);
+    context.drawImage(imageSource, 0, 0, targetWidth, targetHeight);
+
+    return canvas.toDataURL('image/jpeg', quality);
+  } finally {
+    cleanup();
+  }
+}
+
+function formatFileSize(bytes) {
+  const value = Number(bytes || 0);
+  if (value < 1024) return `${number(value)} B`;
+  if (value < 1024 * 1024) return `${number(value / 1024, 1)} KB`;
+  return `${number(value / (1024 * 1024), 1)} MB`;
 }
 
 function formatDateTime(value) {
