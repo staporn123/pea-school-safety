@@ -10,7 +10,9 @@ const state = {
   images: [],
   map: null,
   markersLayer: null,
-  activeView: 'map'
+  activeView: 'map',
+  pendingEditProjectId: '',
+  uploadedInCurrentSave: 0
 };
 
 const el = {};
@@ -31,7 +33,8 @@ function cacheElements() {
     'clearFiltersBtn','ownerSummaryList','resultCount','mapView','listView','projectList','emptyState','modalBackdrop','detailModal',
     'detailTitle','detailBody','detailMapBtn','projectReportBtn','editProjectBtn','loginModal','loginForm','loginOwner','loginPin',
     'editModal','editForm','editTitle','editStatus','editWorkDate','editRecorder','editNote','editCoordinates','getLocationBtn',
-    'imageInput','imagePreview','saveProjectBtn','reportModal','reportForm','reportType','reportOwnerField','reportOwner','reportCount','toast'
+    'imageInput','imagePreview','selectedImageCount','editExistingPhotos','existingPhotoCount','uploadProgressText',
+    'saveProjectBtn','reportModal','reportForm','reportType','reportOwnerField','reportOwner','reportCount','toast'
   ].forEach(id => { el[id] = document.getElementById(id); });
 }
 
@@ -56,7 +59,7 @@ function bindEvents() {
   el.getLocationBtn.addEventListener('click', getCurrentLocation);
   el.imageInput.addEventListener('change', handleImages);
   el.projectReportBtn.addEventListener('click', () => generateProjectReport(state.selectedProject));
-  el.editProjectBtn.addEventListener('click', openEditModal);
+  el.editProjectBtn.addEventListener('click', () => beginEditProject(state.selectedProject && state.selectedProject.id));
   el.reportType.addEventListener('change', updateReportOptions);
   el.reportOwner.addEventListener('change', updateReportCount);
   el.reportForm.addEventListener('submit', submitReport);
@@ -189,26 +192,88 @@ function renderMapMarkers() {
   if (!state.map) return;
   state.markersLayer.clearLayers();
   const bounds = [];
+
   state.filtered.forEach(project => {
     if (!(project.latitude && project.longitude)) return;
-    const icon = L.divIcon({ className: '', html: `<div class="custom-marker ${project.status}"><span></span></div>`, iconSize: [24,24], iconAnchor: [12,22] });
-    const marker = L.marker([project.latitude, project.longitude], { icon }).addTo(state.markersLayer);
-    marker.bindPopup(`
-      <h4>${escapeHtml(project.schoolName)}</h4>
-      <p>${escapeHtml(project.owner || '-')}</p>
-      <p><span class="status-badge ${project.status}">${escapeHtml(project.statusLabel)}</span></p>
-      <button class="btn btn-primary map-detail-btn" data-id="${escapeAttr(project.id)}" type="button">ดูรายละเอียด</button>
-    `);
-    marker.on('popupopen', () => {
-      setTimeout(() => {
-        const button = document.querySelector(`.map-detail-btn[data-id="${CSS.escape(project.id)}"]`);
-        if (button) button.addEventListener('click', () => openProject(project.id));
-      }, 0);
+
+    const icon = L.divIcon({
+      className: '',
+      html: `<div class="custom-marker ${project.status}"><span></span></div>`,
+      iconSize: [26, 26],
+      iconAnchor: [13, 24],
+      popupAnchor: [0, -22]
     });
+
+    const marker = L.marker([project.latitude, project.longitude], { icon }).addTo(state.markersLayer);
+    marker.bindPopup(renderMarkerPopup(project), {
+      minWidth: 285,
+      maxWidth: 330,
+      className: 'project-map-popup'
+    });
+
+    marker.on('popupopen', () => {
+      const popupElement = marker.getPopup() && marker.getPopup().getElement();
+      if (!popupElement) return;
+
+      const detailButton = popupElement.querySelector('.map-detail-btn');
+      const saveButton = popupElement.querySelector('.map-save-btn');
+
+      if (detailButton) {
+        detailButton.addEventListener('click', () => openProject(project.id), { once: true });
+      }
+      if (saveButton) {
+        saveButton.addEventListener('click', () => beginEditProject(project.id), { once: true });
+      }
+    });
+
     bounds.push([project.latitude, project.longitude]);
   });
+
   if (bounds.length) state.map.fitBounds(bounds, { padding: [28, 28], maxZoom: 13 });
   else state.map.setView(APP_CONFIG.MAP_DEFAULT_CENTER, APP_CONFIG.MAP_DEFAULT_ZOOM);
+}
+
+function renderMarkerPopup(project) {
+  const photoPreview = renderMarkerPhotos(project.photoUrls || []);
+  return `
+    <div class="map-popup-card">
+      <div class="map-popup-head">
+        <span class="status-badge ${project.status}">${escapeHtml(project.statusLabel)}</span>
+        <span class="map-photo-count">📷 ${number(project.photoCount)} รูป</span>
+      </div>
+      <h4>${escapeHtml(project.schoolName)}</h4>
+      <p class="map-popup-wbs">${escapeHtml(project.wbs)}</p>
+      <div class="map-popup-info">
+        <span><b>ผู้รับผิดชอบ:</b> ${escapeHtml(project.owner || '-')}</span>
+        <span><b>ตำบล:</b> ${escapeHtml(project.subdistrict || '-')}</span>
+        <span><b>RCD:</b> ${number(project.rcdCount)} ตัว</span>
+        <span><b>พิกัด:</b> ${number(project.latitude, 6)}, ${number(project.longitude, 6)}</span>
+      </div>
+      ${photoPreview}
+      <div class="map-popup-actions">
+        <button class="btn btn-light map-detail-btn" type="button">ดูข้อมูลและรูป</button>
+        <button class="btn btn-primary map-save-btn" type="button">บันทึกผล / เพิ่มรูป</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderMarkerPhotos(photos) {
+  if (!photos || !photos.length) {
+    return '<div class="map-popup-no-photo">ยังไม่มีภาพถ่ายงานนี้</div>';
+  }
+
+  const preview = photos.slice(0, 3);
+  return `
+    <div class="map-popup-photos">
+      ${preview.map((photo, index) => `
+        <img src="${escapeAttr(photo.thumbnailUrl || photo.viewUrl)}"
+             alt="ภาพที่ ${index + 1}"
+             loading="lazy"
+             onerror="this.style.display='none'">`).join('')}
+      ${photos.length > 3 ? `<span class="more-photo">+${number(photos.length - 3)}</span>` : ''}
+    </div>
+  `;
 }
 
 function setView(view) {
@@ -228,7 +293,8 @@ function openProject(id) {
   el.detailTitle.textContent = project.schoolName;
   el.detailMapBtn.href = project.mapUrl || '#';
   el.detailMapBtn.classList.toggle('hidden', !project.mapUrl);
-  el.editProjectBtn.classList.toggle('hidden', !(state.session.token && state.session.owner === project.owner));
+  el.editProjectBtn.classList.remove('hidden');
+  el.editProjectBtn.textContent = project.photoCount > 0 ? 'บันทึกผล / เพิ่มรูป' : 'บันทึกผลดำเนินงาน';
   el.detailBody.innerHTML = `
     <div class="detail-grid">
       ${detailItem('สถานะ', `<span class="status-badge ${project.status}">${escapeHtml(project.statusLabel)}</span>`, true)}
@@ -263,6 +329,35 @@ function renderPhotoGallery(photos) {
     </a>`).join('')}</div>`;
 }
 
+
+function beginEditProject(projectId) {
+  const project = state.projects.find(item => item.id === projectId);
+  if (!project) return;
+
+  state.selectedProject = project;
+
+  if (state.session.token && state.session.owner === project.owner) {
+    openEditModal();
+    return;
+  }
+
+  state.pendingEditProjectId = project.id;
+
+  if (state.session.token && state.session.owner !== project.owner) {
+    state.session = { token: '', owner: '' };
+    sessionStorage.removeItem('peaSessionToken');
+    sessionStorage.removeItem('peaSessionOwner');
+    updateLoginButton();
+  }
+
+  closeModals();
+  if (Array.from(el.loginOwner.options).some(option => option.value === project.owner)) {
+    el.loginOwner.value = project.owner;
+  }
+  showToast(`กรุณาเข้าสู่โหมดทีม ${project.owner} เพื่อบันทึกงานนี้`);
+  openModal(el.loginModal);
+}
+
 function handleLoginButton() {
   if (state.session.token) {
     if (confirm(`ออกจากโหมดทีม ${state.session.owner} หรือไม่`)) logout();
@@ -282,9 +377,18 @@ async function submitLogin(event) {
     sessionStorage.setItem('peaSessionToken', data.token);
     sessionStorage.setItem('peaSessionOwner', data.owner);
     el.loginPin.value = '';
+    const pendingProjectId = state.pendingEditProjectId;
+    state.pendingEditProjectId = '';
     closeModals();
     updateLoginButton();
     showToast(`เข้าสู่โหมดทีม ${data.owner} แล้ว`);
+    if (pendingProjectId) {
+      const pendingProject = state.projects.find(item => item.id === pendingProjectId);
+      if (pendingProject && pendingProject.owner === data.owner) {
+        state.selectedProject = pendingProject;
+        setTimeout(openEditModal, 0);
+      }
+    }
   } catch (error) {
     showToast(error.message, true);
   } finally {
@@ -316,83 +420,156 @@ function updateLoginButton() {
 function openEditModal() {
   const p = state.selectedProject;
   if (!p) return;
+
   if (!state.session.token || state.session.owner !== p.owner) {
-    showToast('กรุณาเข้าสู่โหมดทีมของผู้รับผิดชอบรายการนี้ก่อน', true);
+    beginEditProject(p.id);
     return;
   }
+
   closeModals();
   state.images = [];
+  state.uploadedInCurrentSave = 0;
   el.editTitle.textContent = p.schoolName;
   el.editStatus.value = p.status;
-  el.editWorkDate.value = p.workDate || new Date().toISOString().slice(0,10);
+  el.editWorkDate.value = p.workDate || new Date().toISOString().slice(0, 10);
   el.editRecorder.value = p.recorder || '';
   el.editNote.value = p.note || '';
   el.editCoordinates.value = p.fieldCoordinates || (p.latitude && p.longitude ? `${p.latitude}, ${p.longitude}` : '');
   el.imageInput.value = '';
+  el.existingPhotoCount.textContent = `${number(p.photoCount)} รูป`;
+  el.editExistingPhotos.innerHTML = renderPhotoGallery(p.photoUrls || []);
+  el.uploadProgressText.textContent = 'สามารถถ่ายหรือเลือกเพิ่มได้หลายครั้ง ระบบจะอัปโหลดเป็นชุดอัตโนมัติ';
   renderImagePreview();
   openModal(el.editModal);
 }
 
+
 async function handleImages(event) {
-  const files = Array.from(event.target.files || []).slice(0, APP_CONFIG.MAX_UPLOAD_FILES);
+  const files = Array.from(event.target.files || []);
   if (!files.length) return;
-  setLoading(true, 'กำลังเตรียมรูปภาพ');
+
+  setLoading(true, `กำลังเตรียมรูปภาพ ${number(files.length)} รูป`);
   try {
-    state.images = [];
+    let completed = 0;
     for (const file of files) {
-      state.images.push({ name: file.name, dataUrl: await compressImage(file) });
+      const dataUrl = await compressImage(file);
+      state.images.push({
+        name: file.name || `photo_${Date.now()}_${completed + 1}.jpg`,
+        dataUrl
+      });
+      completed += 1;
+      el.appLoading.querySelector('strong').textContent = `กำลังเตรียมรูป ${number(completed)} จาก ${number(files.length)}`;
     }
     renderImagePreview();
+    showToast(`เพิ่มรูปสำหรับอัปโหลดแล้ว ${number(files.length)} รูป`);
   } catch (error) {
     showToast('เตรียมรูปไม่สำเร็จ: ' + error.message, true);
   } finally {
+    event.target.value = '';
     setLoading(false);
   }
 }
 
 function renderImagePreview() {
+  el.selectedImageCount.textContent = `${number(state.images.length)} รูปที่รออัปโหลด`;
   el.imagePreview.innerHTML = state.images.map((image, index) => `
-    <div class="preview-item"><img src="${image.dataUrl}" alt="ภาพที่ ${index+1}"><button type="button" data-remove-image="${index}">×</button></div>`).join('');
+    <div class="preview-item">
+      <img src="${image.dataUrl}" alt="ภาพที่ ${index + 1}">
+      <span>${index + 1}</span>
+      <button type="button" data-remove-image="${index}" aria-label="ลบภาพ">×</button>
+    </div>`).join('');
+
   el.imagePreview.querySelectorAll('[data-remove-image]').forEach(button => button.addEventListener('click', () => {
     state.images.splice(Number(button.dataset.removeImage), 1);
     renderImagePreview();
   }));
 }
 
+
 async function submitProject(event) {
   event.preventDefault();
   const p = state.selectedProject;
   if (!p) return;
-  const status = el.editStatus.value;
-  if (status === 'PASS' && !el.editWorkDate.value) return showToast('กรุณาระบุวันที่ดำเนินการ', true);
-  if (status === 'PASS' && (p.photoCount || 0) + state.images.length < 1) return showToast('งานที่แล้วเสร็จต้องมีรูปภาพอย่างน้อย 1 รูป', true);
-  if (status === 'FAIL' && !el.editNote.value.trim()) return showToast('งานติดปัญหาต้องระบุหมายเหตุ', true);
 
-  setButtonLoading(el.saveProjectBtn, true, 'กำลังบันทึกและอัปโหลด...');
+  const status = el.editStatus.value;
+  const recorder = el.editRecorder.value.trim();
+  const note = el.editNote.value.trim();
+  const workDate = el.editWorkDate.value;
+  const fieldCoordinates = el.editCoordinates.value.trim();
+  const existingPhotoCount = Number(p.photoCount || 0);
+  const newPhotos = state.images.slice();
+
+  if (!recorder) return showToast('กรุณากรอกชื่อผู้บันทึกผล', true);
+  if (status === 'PASS' && !workDate) return showToast('กรุณาระบุวันที่ดำเนินการ', true);
+  if (status === 'PASS' && existingPhotoCount + newPhotos.length < 1) {
+    return showToast('งานที่แล้วเสร็จต้องมีรูปภาพอย่างน้อย 1 รูป', true);
+  }
+  if (status === 'FAIL' && !note) return showToast('งานติดปัญหาต้องระบุหมายเหตุ', true);
+
+  const batchSize = Math.max(1, Number(APP_CONFIG.UPLOAD_BATCH_SIZE || 3));
+  const batches = [];
+  for (let index = 0; index < newPhotos.length; index += batchSize) {
+    batches.push(newPhotos.slice(index, index + batchSize));
+  }
+
+  setButtonLoading(el.saveProjectBtn, true, 'กำลังบันทึก...');
+  state.uploadedInCurrentSave = 0;
+
   try {
+    for (let index = 0; index < batches.length; index += 1) {
+      const batch = batches[index];
+      el.saveProjectBtn.textContent = `กำลังอัปโหลดรูป ${number(state.uploadedInCurrentSave + 1)}–${number(state.uploadedInCurrentSave + batch.length)} จาก ${number(newPhotos.length)}`;
+      el.uploadProgressText.textContent = `กำลังส่งรูปชุดที่ ${number(index + 1)} จาก ${number(batches.length)} กรุณาอย่าปิดหน้านี้`;
+
+      const uploadResult = await apiCall('uploadProjectPhotos', {
+        token: state.session.token,
+        projectId: p.id,
+        images: batch
+      }, 180000);
+
+      if (!uploadResult.success) throw new Error(uploadResult.message || 'อัปโหลดรูปไม่สำเร็จ');
+      state.uploadedInCurrentSave += Number(uploadResult.uploadedCount || batch.length);
+    }
+
+    el.saveProjectBtn.textContent = 'กำลังบันทึกสถานะและรายละเอียด...';
     const data = await apiCall('saveProject', {
       token: state.session.token,
       projectId: p.id,
       status,
-      workDate: el.editWorkDate.value,
-      recorder: el.editRecorder.value.trim(),
-      note: el.editNote.value.trim(),
-      fieldCoordinates: el.editCoordinates.value.trim(),
-      images: state.images
-    }, 180000);
+      workDate,
+      recorder,
+      note,
+      fieldCoordinates,
+      images: []
+    }, 120000);
+
     if (!data.success) throw new Error(data.message || 'บันทึกไม่สำเร็จ');
+
+    state.images = [];
     closeModals();
-    showToast(data.message || 'บันทึกสำเร็จ');
+    showToast(`บันทึกสำเร็จ${state.uploadedInCurrentSave ? ` และเพิ่มรูป ${number(state.uploadedInCurrentSave)} รูป` : ''}`);
     await loadData();
+
     const refreshed = state.projects.find(item => item.id === p.id);
-    if (refreshed) openProject(refreshed.id);
+    if (refreshed) {
+      state.selectedProject = refreshed;
+      openProject(refreshed.id);
+      if (refreshed.latitude && refreshed.longitude) {
+        state.map.setView([refreshed.latitude, refreshed.longitude], Math.max(state.map.getZoom(), 15));
+      }
+    }
   } catch (error) {
     if (/เซสชัน/.test(error.message)) await logout();
-    showToast(error.message, true);
+    const partialMessage = state.uploadedInCurrentSave > 0
+      ? `อัปโหลดสำเร็จแล้ว ${number(state.uploadedInCurrentSave)} รูป แต่ขั้นตอนถัดไปไม่สำเร็จ: ${error.message}`
+      : error.message;
+    showToast(partialMessage, true);
   } finally {
+    el.uploadProgressText.textContent = 'สามารถเลือกเพิ่มได้หลายครั้ง รูปทั้งหมดจะสะสมในงานเดิม';
     setButtonLoading(el.saveProjectBtn, false);
   }
 }
+
 
 function getCurrentLocation() {
   if (!navigator.geolocation) return showToast('อุปกรณ์นี้ไม่รองรับการอ่านพิกัด', true);
