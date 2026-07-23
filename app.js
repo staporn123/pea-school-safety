@@ -20,6 +20,20 @@ document.addEventListener('DOMContentLoaded', init);
 function init() {
   cacheElements();
   bindEvents();
+
+  let lastMobileMapMode = isMobileMapView();
+  let resizeTimer;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      const currentMobileMapMode = isMobileMapView();
+      if (currentMobileMapMode !== lastMobileMapMode) {
+        lastMobileMapMode = currentMobileMapMode;
+        renderMapMarkers();
+      }
+      if (state.map) state.map.invalidateSize();
+    }, 180);
+  });
   initMap();
   loadData();
 }
@@ -182,10 +196,15 @@ function initMap() {
   state.markersLayer = L.layerGroup().addTo(state.map);
 }
 
+function isMobileMapView() {
+  return window.matchMedia('(max-width: 820px)').matches;
+}
+
 function renderMapMarkers() {
   if (!state.map) return;
   state.markersLayer.clearLayers();
   const bounds = [];
+  const mobileMode = isMobileMapView();
 
   state.filtered.forEach(project => {
     if (!(project.latitude && project.longitude)) return;
@@ -193,38 +212,61 @@ function renderMapMarkers() {
     const icon = L.divIcon({
       className: '',
       html: `<div class="custom-marker ${project.status}"><span></span></div>`,
-      iconSize: [26, 26],
-      iconAnchor: [13, 24],
-      popupAnchor: [0, -22]
+      iconSize: mobileMode ? [32, 32] : [28, 28],
+      iconAnchor: mobileMode ? [16, 29] : [14, 26],
+      popupAnchor: [0, -26]
     });
 
-    const marker = L.marker([project.latitude, project.longitude], { icon }).addTo(state.markersLayer);
-    marker.bindPopup(renderMarkerPopup(project), {
-      minWidth: 285,
-      maxWidth: 330,
-      className: 'project-map-popup'
-    });
+    const marker = L.marker([project.latitude, project.longitude], {
+      icon,
+      title: project.schoolName,
+      keyboard: true
+    }).addTo(state.markersLayer);
 
-    marker.on('popupopen', () => {
-      const popupElement = marker.getPopup() && marker.getPopup().getElement();
-      if (!popupElement) return;
+    if (mobileMode) {
+      marker.on('click', () => openProject(project.id));
+      marker.on('keypress', event => {
+        if (event.originalEvent && ['Enter', ' '].includes(event.originalEvent.key)) {
+          openProject(project.id);
+        }
+      });
+    } else {
+      marker.bindPopup(renderMarkerPopup(project), {
+        minWidth: 380,
+        maxWidth: 460,
+        className: 'project-map-popup',
+        autoPan: true,
+        autoPanPaddingTopLeft: [30, 90],
+        autoPanPaddingBottomRight: [30, 50]
+      });
 
-      const detailButton = popupElement.querySelector('.map-detail-btn');
-      const saveButton = popupElement.querySelector('.map-save-btn');
+      marker.on('popupopen', () => {
+        const popupElement = marker.getPopup() && marker.getPopup().getElement();
+        if (!popupElement) return;
 
-      if (detailButton) {
-        detailButton.addEventListener('click', () => openProject(project.id), { once: true });
-      }
-      if (saveButton) {
-        saveButton.addEventListener('click', () => beginEditProject(project.id), { once: true });
-      }
-    });
+        const detailButton = popupElement.querySelector('.map-detail-btn');
+        const saveButton = popupElement.querySelector('.map-save-btn');
+
+        if (detailButton) {
+          detailButton.addEventListener('click', () => openProject(project.id), { once: true });
+        }
+        if (saveButton) {
+          saveButton.addEventListener('click', () => beginEditProject(project.id), { once: true });
+        }
+      });
+    }
 
     bounds.push([project.latitude, project.longitude]);
   });
 
-  if (bounds.length) state.map.fitBounds(bounds, { padding: [28, 28], maxZoom: 13 });
-  else state.map.setView(APP_CONFIG.MAP_DEFAULT_CENTER, APP_CONFIG.MAP_DEFAULT_ZOOM);
+  if (bounds.length) {
+    state.map.fitBounds(bounds, {
+      padding: mobileMode ? [22, 22] : [34, 34],
+      maxZoom: mobileMode ? 12 : 13
+    });
+  } else {
+    state.map.setView(APP_CONFIG.MAP_DEFAULT_CENTER, APP_CONFIG.MAP_DEFAULT_ZOOM);
+  }
 }
 
 function renderMarkerPopup(project) {
@@ -283,33 +325,97 @@ function setView(view) {
 function openProject(id) {
   const project = state.projects.find(item => item.id === id);
   if (!project) return;
+
   state.selectedProject = project;
   el.detailTitle.textContent = project.schoolName;
   el.detailMapBtn.href = project.mapUrl || '#';
   el.detailMapBtn.classList.toggle('hidden', !project.mapUrl);
   el.editProjectBtn.classList.remove('hidden');
-  el.editProjectBtn.textContent = project.photoCount > 0 ? 'บันทึกผล / เพิ่มรูป' : 'บันทึกผลดำเนินงาน';
+  el.editProjectBtn.textContent =
+    project.photoCount > 0 ? 'บันทึกผล / เพิ่มรูป' : 'บันทึกผลดำเนินงาน';
+
+  const coordinates = project.latitude && project.longitude
+    ? `${number(project.latitude, 6)}, ${number(project.longitude, 6)}`
+    : '-';
+
   el.detailBody.innerHTML = `
-    <div class="detail-grid">
-      ${detailItem('สถานะ', `<span class="status-badge ${project.status}">${escapeHtml(project.statusLabel)}</span>`, true)}
-      ${detailItem('ผู้รับผิดชอบ', project.owner || '-')}
-      ${detailItem('หมายเลข WBS', project.wbs)}
-      ${detailItem('ตำบล', project.subdistrict || '-')}
-      ${detailItem('จำนวน RCD', `${number(project.rcdCount)} ตัว`)}
-      ${detailItem('จำนวนสายดิน', `${number(project.groundingCount)} จุด`)}
-      ${detailItem('ค่าใช้จ่ายรวม', `${number(project.totalCost,2)} บาท`)}
-      ${detailItem('วันที่ดำเนินการ', project.workDate || '-')}
-      ${detailItem('ผู้บันทึกผล', project.recorder || '-')}
-      ${detailItem('รหัสพนักงานผู้บันทึก', project.employeeId || '-')}
-      ${detailItem('อัปเดตล่าสุด', project.updatedAt ? formatDateTime(project.updatedAt) : '-')}
-      ${detailItem('พิกัด', project.latitude && project.longitude ? `${project.latitude}, ${project.longitude}` : '-')}
-      ${detailItem('จำนวนรูปภาพ', `${number(project.photoCount)} ภาพ`)}
-    </div>
-    <div class="detail-item" style="margin-top:12px"><span>หมายเหตุ</span><strong>${escapeHtml(project.note || '-')}</strong></div>
-    <h4>ภาพถ่ายการดำเนินงาน</h4>
-    ${renderPhotoGallery(project.photoUrls)}
+    <section class="detail-summary-card">
+      <div class="detail-summary-top">
+        <span class="status-badge ${project.status}">
+          ${escapeHtml(project.statusLabel)}
+        </span>
+        <span class="detail-photo-pill">📷 ${number(project.photoCount)} ภาพ</span>
+      </div>
+
+      <div class="detail-owner-line">
+        <span>ผู้รับผิดชอบ</span>
+        <strong>${escapeHtml(project.owner || '-')}</strong>
+      </div>
+
+      <div class="detail-quick-metrics">
+        <div>
+          <span>RCD</span>
+          <strong>${number(project.rcdCount)}</strong>
+          <small>ตัว</small>
+        </div>
+        <div>
+          <span>สายดิน</span>
+          <strong>${number(project.groundingCount)}</strong>
+          <small>จุด</small>
+        </div>
+        <div>
+          <span>ค่าใช้จ่าย</span>
+          <strong>${number(project.totalCost, 2)}</strong>
+          <small>บาท</small>
+        </div>
+      </div>
+    </section>
+
+    <section class="detail-section">
+      <h4>ข้อมูลงาน</h4>
+      <div class="detail-list">
+        ${detailRow('หมายเลข WBS', project.wbs)}
+        ${detailRow('ตำบล', project.subdistrict || '-')}
+        ${detailRow('พิกัด', coordinates, true)}
+        ${detailRow('วันที่ดำเนินการ', project.workDate || '-')}
+        ${detailRow('อัปเดตล่าสุด', project.updatedAt ? formatDateTime(project.updatedAt) : '-')}
+      </div>
+    </section>
+
+    <section class="detail-section">
+      <h4>ข้อมูลการบันทึก</h4>
+      <div class="detail-list">
+        ${detailRow('ชื่อผู้บันทึก', project.recorder || '-')}
+        ${detailRow('รหัสพนักงาน', project.employeeId || '-')}
+      </div>
+      <div class="detail-note-card">
+        <span>หมายเหตุการดำเนินงาน</span>
+        <p>${escapeHtml(project.note || 'ยังไม่มีหมายเหตุ')}</p>
+      </div>
+    </section>
+
+    <section class="detail-section detail-photo-section">
+      <div class="detail-section-heading">
+        <h4>ภาพถ่ายการดำเนินงาน</h4>
+        <span>${number(project.photoCount)} ภาพ</span>
+      </div>
+      ${renderPhotoGallery(project.photoUrls)}
+    </section>
   `;
+
+  if (state.map && state.map.closePopup) state.map.closePopup();
   openModal(el.detailModal);
+}
+
+function detailRow(label, value, mono = false) {
+  return `
+    <div class="detail-row">
+      <span>${escapeHtml(label)}</span>
+      <strong class="${mono ? 'detail-mono' : ''}">
+        ${escapeHtml(String(value))}
+      </strong>
+    </div>
+  `;
 }
 
 function detailItem(label, value, raw = false) {
@@ -683,12 +789,15 @@ function apiGetJsonp(action, params = {}, timeout = 30000) {
 
 function apiCall(action, payload = {}, timeout = APP_CONFIG.API_TIMEOUT_MS) {
   return new Promise((resolve, reject) => {
-    const requestId = 'req_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+    const requestId =
+      'req_' + Date.now() + '_' + Math.random().toString(36).slice(2);
     const iframeName = 'pea_api_' + requestId;
     const iframe = document.createElement('iframe');
+    const form = document.createElement('form');
+
     iframe.name = iframeName;
     iframe.style.display = 'none';
-    const form = document.createElement('form');
+
     form.method = 'POST';
     form.action = APP_CONFIG.API_URL;
     form.target = iframeName;
@@ -700,6 +809,7 @@ function apiCall(action, payload = {}, timeout = APP_CONFIG.API_TIMEOUT_MS) {
       callbackMode: 'iframe',
       requestId
     };
+
     Object.entries(fields).forEach(([name, value]) => {
       const input = document.createElement('input');
       input.type = 'hidden';
@@ -709,30 +819,96 @@ function apiCall(action, payload = {}, timeout = APP_CONFIG.API_TIMEOUT_MS) {
     });
 
     let settled = false;
+    let pollTimer = null;
+    let timeoutTimer = null;
+    let pollAttempts = 0;
+
     const cleanup = () => {
       window.removeEventListener('message', onMessage);
+      clearTimeout(pollTimer);
+      clearTimeout(timeoutTimer);
       iframe.remove();
       form.remove();
-      clearTimeout(timer);
     };
-    const onMessage = event => {
-      const data = event.data;
-      if (!data || data.type !== 'PEA_API_RESPONSE' || data.requestId !== requestId) return;
+
+    const finish = (result, error) => {
+      if (settled) return;
       settled = true;
       cleanup();
-      if (data.payload && data.payload.success === false) reject(new Error(data.payload.message || 'API error'));
-      else resolve(data.payload);
+
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      if (result && result.success === false) {
+        reject(new Error(result.message || 'API error'));
+        return;
+      }
+
+      resolve(result);
     };
+
+    const onMessage = event => {
+      const data = event.data;
+      if (
+        !data ||
+        data.type !== 'PEA_API_RESPONSE' ||
+        data.requestId !== requestId
+      ) return;
+
+      finish(data.payload);
+    };
+
+    const pollStatus = async () => {
+      if (settled) return;
+
+      try {
+        const status = await apiGetJsonp(
+          'requestStatus',
+          { requestId, consume: '1' },
+          15000
+        );
+
+        if (status && status.state === 'DONE') {
+          finish(status.result);
+          return;
+        }
+
+        if (status && status.state === 'ERROR') {
+          finish(null, new Error(
+            (status.result && status.result.message) ||
+            'เกิดข้อผิดพลาดระหว่างบันทึก'
+          ));
+          return;
+        }
+      } catch (error) {
+        // ช่วงแรกอาจยังไม่พบ requestId เพราะ doPost กำลังเริ่มทำงาน
+        // ให้ลองใหม่จนกว่าจะครบเวลาหลัก
+      }
+
+      pollAttempts += 1;
+      const delay = pollAttempts < 4 ? 900 : 1400;
+      pollTimer = setTimeout(pollStatus, delay);
+    };
+
     window.addEventListener('message', onMessage);
     document.body.appendChild(iframe);
     document.body.appendChild(form);
-    form.submit();
 
-    const timer = setTimeout(() => {
-      if (settled) return;
-      cleanup();
-      reject(new Error('การเชื่อมต่อใช้เวลานานเกินไป กรุณาตรวจสอบ Deployment ของ Apps Script'));
+    // เริ่มตรวจสถานะหลังส่งประมาณ 1 วินาที
+    pollTimer = setTimeout(pollStatus, 1000);
+
+    timeoutTimer = setTimeout(() => {
+      finish(
+        null,
+        new Error(
+          'ระบบยังไม่ได้รับผลยืนยันจาก Apps Script กรุณาตรวจสอบ Google Sheet และ Drive ก่อนกดบันทึกซ้ำ'
+        )
+      );
     }, timeout);
+
+    form.submit();
   });
 }
 
